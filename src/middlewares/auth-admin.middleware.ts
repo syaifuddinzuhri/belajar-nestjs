@@ -6,6 +6,7 @@ import {
 import { Request, Response, NextFunction } from 'express';
 import { parse } from 'cookie';
 import { JwtService } from 'src/services/jwt.service';
+import { ADMIN, COOKIE_ACCESS_TOKEN_ADMIN } from 'src/helpers/constants';
 
 @Injectable()
 export class AuthAdminMiddleware implements NestMiddleware {
@@ -14,11 +15,11 @@ export class AuthAdminMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     const token = req.headers.authorization?.split(' ')[1];
     const cookies = parse(req.headers.cookie || '');
-    const cookieToken = cookies.access_token;
+    const cookieToken = cookies[COOKIE_ACCESS_TOKEN_ADMIN];
     if (token) {
       let status: boolean = false;
       try {
-        const decoded = this.jwtService.verifyToken(token);
+        const decoded = this.jwtService.verifyToken(res, token, ADMIN);
         if (
           (!decoded && decoded['type'] !== 'admin') ||
           token !== cookieToken

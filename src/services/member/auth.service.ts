@@ -5,11 +5,12 @@ import { MemberDocument } from 'src/schemas';
 import { LoginWithGoogleDto } from 'src/decorators/login-with-google.dto.';
 import * as admin from 'firebase-admin';
 import { InjectConnection } from '@nestjs/mongoose';
-import { MongooseTransaction, setObjectTypeId } from 'src/helpers/functions';
+import { MongooseTransaction, resetCookie, setCookie, setObjectTypeId } from 'src/helpers/functions';
 import * as jwt from 'jsonwebtoken';
 import { getJwtKey, getJwtTTL } from 'src/helpers/functions';
 import { Response as Res, Request as Req } from 'express';
 import { JwtService } from '../jwt.service';
+import { COOKIE_ACCESS_TOKEN_MEMBER, COOKIE_USER_MEMBER, MEMBER } from 'src/helpers/constants';
 
 @Injectable()
 export class AuthService {
@@ -17,7 +18,7 @@ export class AuthService {
     @InjectModel('member') private readonly memberSchema: Model<MemberDocument>,
     @InjectConnection() private readonly connection: mongoose.Connection,
     private readonly jwtService: JwtService,
-  ) {}
+  ) { }
 
   async loginWithGoogle(body: LoginWithGoogleDto, res: Res): Promise<any> {
     return MongooseTransaction(this.connection, async () => {
@@ -41,14 +42,8 @@ export class AuthService {
         getJwtKey(),
         { expiresIn: getJwtTTL() },
       );
-      res.cookie('access_token', token, {
-        secure: true,
-        maxAge: getJwtTTL(),
-      });
-      res.cookie('user', JSON.stringify(member), {
-        secure: true,
-        maxAge: getJwtTTL(),
-      });
+      setCookie(res, COOKIE_ACCESS_TOKEN_MEMBER, token)
+      setCookie(res, COOKIE_USER_MEMBER, JSON.stringify(member))
       return {
         user: member,
         access_token: token,
@@ -56,9 +51,9 @@ export class AuthService {
     });
   }
 
-  async profile(req: Req): Promise<any> {
+  async profile(req: Req, res: Res): Promise<any> {
     const token = req.headers.authorization?.split(' ')[1];
-    const decoded = await this.jwtService.verifyToken(token);
+    const decoded = await this.jwtService.verifyToken(res, token, MEMBER);
     return await this.memberSchema
       .findById(setObjectTypeId(decoded['userId']))
       .exec();
@@ -67,8 +62,8 @@ export class AuthService {
   async logout(req: Req, res: Res): Promise<any> {
     const token = req.headers.authorization?.split(' ')[1];
     await this.jwtService.revokeToken(token);
-    res.cookie('access_token', '', { expires: new Date(0) });
-    res.cookie('user', '', { expires: new Date(0) });
+    resetCookie(res, COOKIE_ACCESS_TOKEN_MEMBER);
+    resetCookie(res, COOKIE_USER_MEMBER);
     return true;
   }
 

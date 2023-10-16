@@ -9,9 +9,9 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Get('profile')
-  async profile(@Request() req: Req) {
+  async profile(@Request() req: Req, @Response({ passthrough: true }) res: Res) {
     try {
-      const result = await this.authService.profile(req);
+      const result = await this.authService.profile(req, res);
       return new ResponseSuccess(result);
     } catch (error) {
       throw error;

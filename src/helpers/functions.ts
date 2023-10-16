@@ -1,5 +1,6 @@
 import mongoose, { ClientSession, Connection } from 'mongoose';
 import * as bcrypt from 'bcrypt';
+import { Response } from 'express';
 
 export const MongooseTransaction = async <T>(
   connection: Connection,
@@ -63,4 +64,16 @@ export function isValidJSON(str: string) {
   } catch (e) {
     return false;
   }
+}
+
+export function resetCookie(res: Response, key: string) {
+  res.cookie(key, '', { expires: new Date(0) });
+  res.cookie(key, '', { expires: new Date(0) });
+}
+
+export function setCookie(res: Response, key: string, value: string) {
+  res.cookie(key, value, {
+    secure: true,
+    maxAge: getJwtTTL(),
+  });
 }

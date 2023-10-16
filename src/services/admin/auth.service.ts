@@ -4,21 +4,22 @@ import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { AdminDocument } from 'src/schemas';
 import { JwtService } from '../jwt.service';
-import { comparePassword, setObjectTypeId } from 'src/helpers/functions';
+import { comparePassword, resetCookie, setCookie, setObjectTypeId } from 'src/helpers/functions';
 import { LoginDto } from 'src/decorators/login.dto';
 import * as jwt from 'jsonwebtoken';
 import { getJwtKey, getJwtTTL } from 'src/helpers/functions';
+import { ADMIN, COOKIE_ACCESS_TOKEN_ADMIN, COOKIE_USER_ADMIN } from 'src/helpers/constants';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     @InjectModel('admin') private readonly adminSchema: Model<AdminDocument>,
-  ) {}
+  ) { }
 
   async login(body: LoginDto, res: Res, req: Req): Promise<any> {
     try {
-      const admin = await this.getAdminByUsername(body.username);
+      let admin = await this.getAdminByUsername(body.username, false);
       if (!admin) throw new Error('Username not found');
 
       const isPasswordValid = await comparePassword(
@@ -27,6 +28,9 @@ export class AuthService {
       );
 
       if (!isPasswordValid) throw new Error('Password incorrect');
+
+      resetCookie(res, COOKIE_ACCESS_TOKEN_ADMIN);
+      resetCookie(res, COOKIE_USER_ADMIN);
 
       const token = await jwt.sign(
         {
@@ -37,17 +41,13 @@ export class AuthService {
         getJwtKey(),
         { expiresIn: getJwtTTL() },
       );
-      res.cookie('access_token', token, {
-        secure: true,
-        maxAge: getJwtTTL(),
-      });
-      res.cookie('user', JSON.stringify(admin), {
-        secure: true,
-        maxAge: getJwtTTL(),
-      });
-      const profile = await this.profile(req);
+
+      setCookie(res, COOKIE_ACCESS_TOKEN_ADMIN, token)
+      setCookie(res, COOKIE_USER_ADMIN, JSON.stringify(admin))
+
+      admin = await this.getAdminByUsername(body.username);
       return {
-        user: profile,
+        user: admin,
         access_token: token,
       };
     } catch (error) {
@@ -55,19 +55,19 @@ export class AuthService {
     }
   }
 
-  async getAdminByUsername(username: string): Promise<boolean | object> {
+  async getAdminByUsername(username: string, withoutPassword = true): Promise<boolean | object> {
     try {
       return await this.adminSchema
         .findOne({ username: username })
-        .select('+password');
+        .select(withoutPassword ? '-password' : '+password');
     } catch (error) {
       return false;
     }
   }
 
-  async profile(req: Req): Promise<any> {
+  async profile(req: Req, res: Res): Promise<any> {
     const token = req.headers.authorization?.split(' ')[1];
-    const decoded = await this.jwtService.verifyToken(token);
+    const decoded = await this.jwtService.verifyToken(res, token, ADMIN);
     return await this.adminSchema
       .findById(setObjectTypeId(decoded['userId']))
       .exec();
@@ -76,8 +76,8 @@ export class AuthService {
   async logout(req: Req, res: Res): Promise<any> {
     const token = req.headers.authorization?.split(' ')[1];
     await this.jwtService.revokeToken(token);
-    res.cookie('access_token', '', { expires: new Date(0) });
-    res.cookie('user', '', { expires: new Date(0) });
+    resetCookie(res, COOKIE_ACCESS_TOKEN_ADMIN);
+    resetCookie(res, COOKIE_USER_ADMIN);
     return true;
   }
 }
